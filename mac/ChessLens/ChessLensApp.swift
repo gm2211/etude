@@ -2,7 +2,25 @@ import SwiftUI
 import AppKit
 import ChessCore
 
+/// The entry point. `--render-snapshots <dir>` renders the video views to PNGs without any window (see
+/// SnapshotRunner) and exits; otherwise the app starts as usual.
 @main
+enum EtudeMain {
+    static func main() {
+        let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--render-snapshots") {
+            let dir = args.indices.contains(i + 1) ? args[i + 1] : "snapshots"
+            MainActor.assumeIsolated { SnapshotRunner.run(into: dir) }
+            exit(0)
+        }
+        if args.contains("--simulate-video") {
+            let ok = MainActor.assumeIsolated { SimulationRunner.run() }
+            exit(ok ? 0 : 1)
+        }
+        ChessLensApp.main()
+    }
+}
+
 struct ChessLensApp: App {
     @State private var model = AppModel()
     @AppStorage(SettingsTab.key) private var settingsTab = SettingsTab.engine

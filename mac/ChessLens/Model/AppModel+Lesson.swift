@@ -12,17 +12,17 @@ extension AppModel {
         if let p = lessonPlayer, p.title == title { closeLesson(); return }
         guard canPlayLessons, !steps.isEmpty else { return }
         clearLessonFocus()
-        walkthrough = nil
+        video = nil
         let p = LessonPlayer(title: title, steps: steps, app: self, isFullReview: fullReview)
         lessonPlayer = p
         p.start()
     }
 
-    /// Closes the lesson being played and the guided review.
-    func closeLesson() { lessonPlayer = nil; walkthrough = nil }
+    /// Closes the lesson being played and the video review.
+    func closeLesson() { lessonPlayer = nil; video = nil }
 
     /// The step's preview position (a demonstrated line) when one is on the board, else nil.
-    var lessonPreview: LessonPlayer.Preview? { walkthrough?.preview ?? lessonPlayer?.preview }
+    var lessonPreview: LessonPlayer.Preview? { video?.preview ?? lessonPlayer?.preview }
 
     /// What the board draws: the lesson preview while one is shown, otherwise the current node.
     var boardPosition: Position { lessonPreview?.position ?? position }

@@ -28,7 +28,7 @@ struct ReviewSummarySection: View {
             .buttonStyle(.plain)
             .help(collapsed ? "Show the summary" : "Hide the summary")
             if !collapsed {
-                if !review.running { SummaryHero() }
+                if !review.running { VideoCard(); SummaryHero() }
                 let phases = review.phaseSummary(game: app.game)
                 // Side by side while both cards fit, stacked when the panel is narrow.
                 SideBySideOrStacked { cards(s, phases) }
@@ -111,11 +111,6 @@ private struct SummaryHero: View {
                 }
             }
             content(ai)
-            // Without a finished lesson the story is made from the review alone.
-            switch ai.state {
-            case nil, .needsSignIn?, .failed?: StorySection()
-            default: EmptyView()
-            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -167,7 +162,6 @@ private struct SummaryHero: View {
         if let h = g.headline {
             Text(h).font(.display(21)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
         }
-        StorySection()
         if !g.concepts.isEmpty {
             VStack(alignment: .leading, spacing: 9) {
                 SectionLabel("What this game teaches")
@@ -285,92 +279,6 @@ private struct PlayLessonButton: View {
         .help(app.canPlayLessons ? "Walk through this idea on the board, narrated (\(steps.count) steps)"
               : "Lessons are paused while you play the engine")
         .accessibilityLabel(active ? "Stop the lesson on \(title)" : "Play the lesson on \(title)")
-    }
-}
-
-/// "THE STORY": the game's beats as a compact timeline (dot by kind, title, headline, the move). Clicking a beat
-/// opens the guided walkthrough there; "Walk through the game" starts at the first. See `BeatWalkthrough`.
-struct StorySection: View {
-    @Environment(AppModel.self) private var app
-
-    var body: some View {
-        let steps = app.storySteps()
-        if steps.count > 1 {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    SectionLabel("The story")
-                    Spacer(minLength: 6)
-                    walkButton(steps)
-                }
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(steps.enumerated()), id: \.offset) { i, st in
-                        row(i, st, last: i == steps.count - 1)
-                    }
-                }
-            }
-            .padding(.top, 2)
-        }
-    }
-
-    private func walkButton(_ steps: [BeatWalkthrough.Step]) -> some View {
-        let active = app.walkthrough != nil
-        let questions = steps.filter { $0.quiz != nil }.count
-        return Button { active ? app.closeLesson() : app.startWalkthrough(at: 0) } label: {
-            HStack(spacing: 6) {
-                Image(systemName: active ? "stop.fill" : "play.fill").font(.system(size: 10, weight: .bold))
-                Text(active ? "Stop walkthrough" : "Walk through the game").font(.system(size: 12.5, weight: .semibold))
-            }
-            .foregroundStyle(active ? Theme.surface : Theme.lesson)
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(active ? Theme.lesson : Theme.lesson.opacity(0.13), in: RoundedRectangle(cornerRadius: 5))
-            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Theme.lesson.opacity(active ? 1 : 0.6), lineWidth: 1))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!app.canPlayLessons)
-        .help(app.canPlayLessons ? "Step through the \(steps.count) beats on the board\(questions > 0 ? ", finding the better move at \(questions) of them" : "")"
-              : "The walkthrough is paused while you play the engine")
-        .accessibilityLabel(active ? "Stop the walkthrough" : "Walk through the game")
-    }
-
-    private func row(_ i: Int, _ st: BeatWalkthrough.Step, last: Bool) -> some View {
-        let active = app.walkthrough?.index == i
-        return Button { app.startWalkthrough(at: i) } label: {
-            HStack(alignment: .top, spacing: 9) {
-                VStack(spacing: 0) {
-                    Circle().fill(st.beat.kind.color).frame(width: 9, height: 9)
-                        .overlay(Circle().stroke(Theme.surface2, lineWidth: 2))
-                        .padding(.top, 4)
-                    if !last { Rectangle().fill(Theme.line2).frame(width: 1.5).frame(maxHeight: .infinity) }
-                }
-                .frame(width: 10)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(st.beat.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(active ? Theme.lesson : Theme.ink)
-                        Text(st.beat.ply == 0 ? "Start" : moveLabel(app.game, st.nodeID))
-                            .font(.mono(11.5, weight: .semibold)).foregroundStyle(Theme.ink2)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 3))
-                            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.line2, lineWidth: 1))
-                        if st.quiz != nil {
-                            Image(systemName: "questionmark.circle").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.lesson)
-                                .help("Find the better move here")
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    Text(st.beat.headline).font(.system(size: 12.5)).foregroundStyle(Theme.ink2)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
-                }
-                .padding(.bottom, last ? 0 : 9)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!app.canPlayLessons)
-        .help("Walk through from here")
-        .accessibilityLabel("Beat \(i + 1), \(st.beat.title): \(st.beat.headline)")
-        .accessibilityAddTraits(active ? .isSelected : [])
     }
 }
 
