@@ -174,7 +174,7 @@ export function createProviders({ chatgpt, claude, grok, byos, vault }) {
 
   const add = a => out.set(a.meta.id, a);
   add(keyed({ id: 'claudeAPI', name: 'Claude API', authKind: 'apiKey', setupText: 'Create a key in Claude Console. Max and Team plans include monthly API credits.', setupURL: 'https://platform.claude.com/settings/keys', provider: byos.claude() }));
-  add(keyed({ id: 'openrouter', name: 'OpenRouter', authKind: 'apiKey', setupText: 'Create a key at openrouter.ai. One key reaches many models.', setupURL: 'https://openrouter.ai/settings/keys', provider: byos.openrouter({ appTitle: 'Étude', referer: 'https://github.com/gm2211/chess-lens' }) }));
+  add(keyed({ id: 'openrouter', name: 'OpenRouter', authKind: 'apiKey', setupText: 'Create a key at openrouter.ai. One key reaches many models.', setupURL: 'https://openrouter.ai/settings/keys', provider: byos.openrouter({ appTitle: 'Étude', referer: 'https://github.com/gm2211/etude' }) }));
   add(keyed({ id: 'grok', name: 'Grok', authKind: 'both', oauth: true, setupText: 'Sign in with SuperGrok, or paste an xAI API key from console.x.ai.', setupURL: 'https://console.x.ai', provider: byos.grok({ deviceCodeViaSite: false }) }));
   add(keyed({ id: 'groq', name: 'Groq', authKind: 'apiKey', setupText: 'Create a key at console.groq.com.', setupURL: 'https://console.groq.com/keys', provider: byos.groq() }));
   add(keyed({ id: 'huggingface', name: 'Hugging Face', authKind: 'apiKey', setupText: 'Create a fine-grained access token with Inference Providers permission.', setupURL: 'https://huggingface.co/settings/tokens', provider: byos.huggingface() }));

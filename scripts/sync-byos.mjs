@@ -25,7 +25,7 @@ if (!sourceArgument || !revisionArgument || extra.length || !/^[0-9a-f]{40}$/i.t
     if (commit !== revision) throw Error('Revision is not an exact commit.');
     // Execute the exporter from the same immutable revision as the selected sources.
     const exporter = execFileSync('git', ['-C', source, 'show', `${revision}:scripts/vendor.mjs`], { stdio: ['ignore', 'pipe', 'pipe'] });
-    temporary = await mkdtemp(join(tmpdir(), 'chess-lens-byos-sync-'));
+    temporary = await mkdtemp(join(tmpdir(), 'etude-byos-sync-'));
     const script = join(temporary, 'vendor.mjs');
     await writeFile(script, exporter, { mode: 0o600 });
     execFileSync(process.execPath, [script, '--source', source, '--ref', revision, '--out', out, '--mode', 'packages', '--packages', 'chatgpt-local,claude-local,core,grok-local,providers', '--name-prefix', 'byos-', '--revision', join(out, 'BYOS_REVISION'), '--engine', 'omit'], { cwd: root, stdio: 'inherit' });
