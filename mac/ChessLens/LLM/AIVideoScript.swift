@@ -43,6 +43,9 @@ final class AIVideoScript {
         state = nil
     }
 
+    /// A finished script given ready-made (the headless snapshot renderer).
+    func inject(_ script: VideoScript) { state = .done(script) }
+
     /// Shown when a review finishes with no AI provider set up.
     func markNeedsSetup() { if state == nil { state = .needsSignIn } }
 

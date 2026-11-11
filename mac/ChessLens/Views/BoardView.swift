@@ -36,6 +36,8 @@ struct BoardView: View {
     @State private var promotion: (from: Square, to: Square)?
     @State private var hoverSquare: Square?
     @State private var labelSquare: Square?
+    /// How much of the video's arrows is drawn: they draw themselves from tail to head as they appear.
+    @State private var arrowProgress: Double = 1
 
     private var geo: BoardGeometry { BoardGeometry(side: side, flipped: app.flipped) }
 
@@ -78,8 +80,8 @@ struct BoardView: View {
 
     private var arrowPlan: ArrowPlan {
         if app.hidesEvaluation { return ArrowPlan() }
-        // The guided review owns the board: its marks only (none while a question is open).
-        if let w = app.walkthrough { return ArrowPlan(arrows: w.marks.arrows) }
+        // The video owns the board: its marks only (none while a question is open).
+        if let v = app.video { return ArrowPlan(arrows: v.boardArrows) }
         if let st = lessonStep {
             return ArrowPlan(arrows: st.arrows.map { BoardArrow(from: $0.from, to: $0.to, kind: .lesson, opacity: 0.82) })
         }
@@ -157,7 +159,7 @@ struct BoardView: View {
 
             circleLayer(g)
 
-            Canvas { ctx, _ in ArrowPainter.draw(&ctx, arrows: plan.arrows, rings: plan.rings, geo: g) }
+            ArrowLayer(arrows: plan.arrows, rings: plan.rings, geo: g, progress: arrowProgress)
                 .frame(width: side, height: side)
                 .allowsHitTesting(false)
 
@@ -171,6 +173,7 @@ struct BoardView: View {
             if let promo = promotion { promotionPicker(promo, g) }
         }
         .frame(width: side, height: side)
+        .overlay { if let v = app.video, !app.hidesEvaluation { VideoOverlay(video: v, side: side) } }
         .clipShape(RoundedRectangle(cornerRadius: 3))
         .shadow(color: .black.opacity(0.18), radius: 12, y: 5)
         .contentShape(Rectangle())
@@ -186,6 +189,15 @@ struct BoardView: View {
             guard let sq = hoverSquare, plan.labels[sq] != nil else { labelSquare = nil; return }
             try? await Task.sleep(for: .milliseconds(120))
             if !Task.isCancelled { labelSquare = sq }
+        }
+        .onChange(of: app.video?.marksEpoch) { _, _ in
+            guard app.video != nil else { arrowProgress = 1; return }
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { arrowProgress = 0 }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(40))
+                withAnimation(.easeOut(duration: 0.35)) { arrowProgress = 1 }
+            }
         }
         .onChange(of: app.currentID) { _, _ in selected = nil; dragFrom = nil; promotion = nil }
         .onChange(of: app.epoch) { _, _ in selected = nil; dragFrom = nil; promotion = nil }
@@ -222,8 +234,8 @@ struct BoardView: View {
         // Captured pieces fade out (and come back in when stepping backwards or when a line preview ends).
         .animation(.easeOut(duration: 0.2), value: app.currentID)
         .animation(.easeOut(duration: 0.2), value: app.lessonPlayer?.linePly)
-        .animation(.easeOut(duration: 0.3), value: app.walkthrough?.sceneMoves.count)
-        .animation(.easeOut(duration: 0.2), value: app.walkthrough?.epoch)
+        .animation(.easeOut(duration: 0.3), value: app.video?.previewMoves.count)
+        .animation(.easeOut(duration: 0.2), value: app.video?.marksEpoch)
         .frame(width: side, height: side, alignment: .topLeading)
         .allowsHitTesting(false)
     }
@@ -270,16 +282,16 @@ struct BoardView: View {
 
     /// A lesson line is being acted out on top of the game position.
     private var previewing: Bool { app.lessonPreview != nil }
-    /// A guided-review scene slides its pieces slowly; lesson lines a little faster; ordinary moves quickly.
+    /// The video slides its pieces at its own pace; lesson lines a little faster; ordinary moves quickly.
     private var slideDuration: Double {
-        if app.walkthrough?.slowSlides == true { return BeatWalkthrough.moveAnimation }
+        if let v = app.video { return v.slideDuration }
         return previewing ? LessonPlayer.lineMoveAnimation : 0.3
     }
 
     /// Rings around the squares the lesson step talks about, popping in when the step starts.
     private func circleLayer(_ g: BoardGeometry) -> some View {
-        let squares = lessonStep?.circles ?? (app.hidesEvaluation ? nil : app.walkthrough?.marks.circles) ?? []
-        let epoch = app.lessonPlayer?.stepEpoch ?? app.walkthrough?.epoch ?? 0
+        let squares = lessonStep?.circles ?? (app.hidesEvaluation ? nil : app.video?.boardCircles) ?? []
+        let epoch = app.lessonPlayer?.stepEpoch ?? app.video?.marksEpoch ?? 0
         return ZStack(alignment: .topLeading) {
             ForEach(squares, id: \.self) { sq in
                 LessonRing(cell: g.cell)
@@ -364,9 +376,9 @@ struct BoardView: View {
                 if !gestureActive {
                     // Touching the board during a lesson ends it, so the move is made on the real position.
                     if app.lessonPlayer != nil { app.closeLesson() }
-                    // A guided-review question takes the move as a try (a wrong try's preview clears first).
-                    if let w = app.walkthrough {
-                        if w.acceptsMove { w.clearAttempt() } else { app.closeLesson() }
+                    // A video question takes the move as a try (a wrong try's preview clears first).
+                    if let v = app.video {
+                        if v.acceptsMove { v.clearAttempt() } else { app.closeLesson() }
                     }
                     gestureActive = true
                     let down = g.square(at: v.startLocation)
@@ -442,6 +454,22 @@ struct BoardView: View {
             .offset(x: r.minX, y: fromTop ? 0 : g.side - g.cell * 4)
         }
         .frame(width: g.side, height: g.side)
+    }
+}
+
+/// The arrows layer. Its progress is animatable, so an arrow can be drawn from tail to head (see `ArrowPainter`).
+struct ArrowLayer: View, Animatable {
+    var arrows: [BoardArrow]
+    var rings: [RingMark]
+    var geo: BoardGeometry
+    var progress: Double = 1
+    nonisolated var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    var body: some View {
+        Canvas { ctx, _ in ArrowPainter.draw(&ctx, arrows: arrows, rings: rings, geo: geo, progress: progress) }
     }
 }
 

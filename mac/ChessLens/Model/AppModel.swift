@@ -31,25 +31,29 @@ final class AppModel {
             if lessonFocus?.nodeID != currentID { lessonFocus = nil }   // moving away ends the illustration
             followLine()
             if let p = lessonPlayer, p.nodeID != currentID { lessonPlayer = nil }   // and the lesson being played
-            if let w = walkthrough, w.nodeID != currentID { walkthrough = nil }     // and the guided review
+            if let v = video, v.nodeID != currentID { video = nil }     // and the video review
         }
     }
     /// The end of the line the move list shows (root → `lineTip`); `currentID` is always on it. It changes
     /// only when the user switches lines, so the move list can read it without rebuilding on every move.
     private(set) var lineTip = 0
     private(set) var epoch = 0 {                     // bumps when a different game is loaded
-        didSet { lessonFocus = nil; lessonPlayer = nil; walkthrough = nil }
+        didSet { lessonFocus = nil; lessonPlayer = nil; video = nil }
     }
     /// A concept's story being played on the board (see AppModel+Lesson).
     var lessonPlayer: LessonPlayer? {
         didSet { if oldValue !== lessonPlayer { oldValue?.stop() } }
     }
-    /// The guided walk through the game's story beats (see AppModel+Beats).
-    var walkthrough: BeatWalkthrough? {
+    /// The review as a video (see AppModel+Video). While it plays the side panel is put away.
+    var video: GameVideo? {
         didSet {
-            guard oldValue !== walkthrough else { return }
+            guard oldValue !== video else { return }
             oldValue?.stop()
-            if oldValue?.hidesEngine == true { refreshEngine() }
+            if video == nil {
+                refreshEngine()
+                // The side panel the video put away for watching comes back when it ends.
+                if inspectorHiddenForWatch { inspectorHiddenForWatch = false; showInspector = true }
+            }
         }
     }
     /// A summary example being illustrated on the board: its caption under the board and its arrows/squares on it.
@@ -62,6 +66,8 @@ final class AppModel {
 
     // MARK: UI state
     var showInspector = true
+    /// The video hid the side panel so the board fills the window; it comes back after.
+    @ObservationIgnored var inspectorHiddenForWatch = false
     var engineEnabled = true { didSet { if engineEnabled != oldValue { refreshEngine() } } }
     var showImport = false
     var showFileImporter = false
@@ -83,8 +89,12 @@ final class AppModel {
     private var toastTask: Task<Void, Never>?
     private var saveTask: Task<Void, Never>?
 
-    init() {
-        if let saved = Self.restore() {
+    /// Headless (the snapshot renderer): the sample game, no engine, nothing read from or written to the saved game.
+    @ObservationIgnored let headless: Bool
+
+    init(headless: Bool = false) {
+        self.headless = headless
+        if !headless, let saved = Self.restore() {
             game = saved.game
             currentID = saved.node
             flipped = saved.flipped
@@ -94,6 +104,7 @@ final class AppModel {
             lineTip = game.mainline().last ?? 0
         }
         layoutCache = [:]
+        if headless { engineEnabled = false; return }
         engine.onSettingsApplied = { [weak self] in self?.refreshEngine() }
         refreshEngine()
         AIHub.shared.onSelectionChange = { [weak self] in self?.aiSelectionChanged() }
@@ -136,6 +147,7 @@ final class AppModel {
 
     /// Eval to show on the bar: live engine line first, then the review result.
     var barEval: Eval? {
+        if let v = video { return v.barEval }      // the game's own eval: a question's answer can't leak
         if let outcome = terminalEval { return outcome }
         if engineEnabled, engine.linesFEN == position.fen, let l = engine.lines.first, l.depth >= barMinDepth { return l.eval }
         return review.entries[currentID]?.eval
@@ -270,7 +282,7 @@ final class AppModel {
         layoutCache = [:]
         review.reset()
         ask.reset()
-        lessonFocus = nil; lessonPlayer = nil; walkthrough = nil
+        lessonFocus = nil; lessonPlayer = nil; video = nil
         currentID = cur
         didMove()
     }
@@ -303,7 +315,7 @@ final class AppModel {
         layoutCache = [:]
         review.reset()
         ask.reset()
-        lessonFocus = nil; lessonPlayer = nil; walkthrough = nil
+        lessonFocus = nil; lessonPlayer = nil; video = nil
         currentID = newCurrent
         didMove()
         showToast("Cleared \(removed) explored move\(removed == 1 ? "" : "s")")
@@ -332,7 +344,7 @@ final class AppModel {
         layoutCache = [:]
         review.reset()
         ask.reset()
-        lessonFocus = nil; lessonPlayer = nil; walkthrough = nil
+        lessonFocus = nil; lessonPlayer = nil; video = nil
         currentID = newCurrent
         didMove()
         showToast("Removed \(removed) side-line move\(removed == 1 ? "" : "s")")
@@ -386,7 +398,7 @@ final class AppModel {
     func refreshEngine() {
         guard !review.running else { return }
         if game.gameEnd(at: currentID) != nil { engine.markGameOver(position) }
-        else if engineEnabled && !hidesEvaluation { engine.analyze(position, history: game.engineHistory(to: currentID)) }
+        else if engineEnabled && !hidesEvaluation && video == nil { engine.analyze(position, history: game.engineHistory(to: currentID)) }
         else { engine.stopLive() }
     }
 
@@ -510,6 +522,7 @@ final class AppModel {
     private static let saveKey = "lastGame.v1"
 
     func persist() {
+        guard !headless else { return }
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(400))

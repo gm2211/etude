@@ -129,6 +129,16 @@ final class ReviewModel {
 
     func cancel() { task?.cancel() }
 
+    /// A finished review given ready-made, with no engine (the headless snapshot renderer).
+    func loadCanned(path: [Int], entries: [Int: ReviewEntry]) {
+        reset()
+        self.path = path
+        self.entries = entries
+        done = path.count
+        hasResults = true
+        rootTurn = .white
+    }
+
     /// Reviews `line` (node ids from the root). `onFinish` reports completion or cancellation.
     /// A finished review also starts the AI lesson and the top moments' explanations when a provider is ready.
     func start(game: Game, line: [Int], engine: EngineController, onFinish: @escaping @MainActor (Bool) -> Void) {

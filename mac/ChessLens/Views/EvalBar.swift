@@ -4,6 +4,10 @@ import ChessCore
 struct EvalBar: View {
     var eval: Eval?
     var flipped: Bool        // true when Black is at the bottom
+    /// The video's bar: a springier swing, and a glow in `pulse.color` each time `pulse.epoch` changes.
+    var lively = false
+    var pulse: (epoch: Int, color: Color)?
+    @State private var glow = 0.0
     /// Last real evaluation; held while the next position has none yet so the bar never snaps to the middle.
     @State private var shown: Eval?
 
@@ -29,13 +33,19 @@ struct EvalBar: View {
                 }
             }
             .frame(width: geo.size.width, height: h)
-            .animation(.spring(duration: 0.7, bounce: 0), value: whiteH)
+            .animation(lively ? .spring(response: 0.6, dampingFraction: 0.7) : .spring(duration: 0.7, bounce: 0), value: whiteH)
         }
         .onAppear { shown = eval }
         .onChange(of: eval) { _, new in if let new { shown = new } }
+        .onChange(of: pulse?.epoch) { _, _ in
+            glow = 1
+            withAnimation(.easeOut(duration: 1.1)) { glow = 0 }
+        }
         .frame(width: 26)
         .clipShape(RoundedRectangle(cornerRadius: 3))
         .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.barLine, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 3).stroke(pulse?.color ?? .clear, lineWidth: 2.5).opacity(glow))
+        .shadow(color: (pulse?.color ?? .clear).opacity(glow * 0.9), radius: 10 * glow)
         .help(shown?.plainDescription ?? "No evaluation yet")
         .accessibilityElement()
         .accessibilityLabel("Evaluation")

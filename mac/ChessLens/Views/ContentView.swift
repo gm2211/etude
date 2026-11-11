@@ -148,11 +148,11 @@ struct ContentView: View {
         if press.modifiers.contains(.command) || press.modifiers.contains(.control) || press.modifiers.contains(.option) { return .ignored }
         // While a lesson plays, Space / ← / → / Esc drive it; other keys (↑, ↓, F) keep their usual meaning and
         // navigating with them ends the lesson.
-        if let w = app.walkthrough {
+        if let v = app.video {
             switch press.key {
-            case .space: w.togglePlay(); return .handled
-            case .leftArrow: w.previous(); return .handled
-            case .rightArrow: w.next(); return .handled
+            case .space: v.togglePlay(); return .handled
+            case .leftArrow: v.previous(); return .handled
+            case .rightArrow: v.next(); return .handled
             case .escape: app.closeLesson(); return .handled
             default: break
             }
@@ -193,38 +193,56 @@ struct BoardColumn: View {
     var body: some View {
         VStack(spacing: 12) {
             GeometryReader { geo in
-                let barW: CGFloat = 26, gap: CGFloat = 10
-                let side = max(160, min(geo.size.height, geo.size.width - barW - gap))
-                HStack(spacing: gap) {
-                    if app.hidesEvaluation {
-                        Color.clear.frame(width: barW, height: side)
-                    } else {
-                        EvalBar(eval: app.barEval, flipped: app.flipped)
-                            .frame(height: side)
-                            .opacity(app.lessonPreview == nil ? 1 : 0.35)   // a demonstrated line isn't evaluated
-                            .animation(.easeOut(duration: 0.2), value: app.lessonPreview == nil)
-                    }
-                    BoardView(side: side)
-                }
-                .frame(width: side + barW + gap, height: side)
-                .overlay(alignment: app.boardPosition.turn == .white
-                         ? (app.flipped ? .topTrailing : .bottomTrailing)
-                         : (app.flipped ? .bottomTrailing : .topTrailing)) {
-                    TurnDot(turn: app.boardPosition.turn)
-                        .offset(x: 16)
-                }
-                .animation(.easeInOut(duration: 0.25), value: app.boardPosition.turn)
-                .animation(.easeInOut(duration: 0.25), value: app.flipped)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                let side = max(160, min(geo.size.height, geo.size.width - BoardStage.barWidth - BoardStage.gap))
+                BoardStage(side: side)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            NavigationRow()
+            if app.video == nil { NavigationRow() }
             if let session = app.playSession { PlayBanner(session: session) }
-            if let w = app.walkthrough, !app.hidesEvaluation { BeatCard(walkthrough: w) }
+            if let v = app.video, !app.hidesEvaluation { VideoPlayerBar(video: v) }
             else if let p = app.lessonPlayer, !app.hidesEvaluation { LessonPlayerBar(player: p) } else { LessonCaption() }
         }
         .padding(.horizontal, 18)
         .padding(.top, 14)
         .padding(.bottom, 16)
+    }
+}
+
+/// The eval bar and the board (with the video's overlay on it), as the board column lays them out.
+struct BoardStage: View {
+    @Environment(AppModel.self) private var app
+    let side: CGFloat
+    static let barWidth: CGFloat = 26
+    static let gap: CGFloat = 10
+
+    var body: some View {
+        HStack(spacing: Self.gap) {
+            if app.hidesEvaluation {
+                Color.clear.frame(width: Self.barWidth, height: side)
+            } else if let v = app.video {
+                // During the video the bar is always there: it follows the game's eval, and dims off the game.
+                EvalBar(eval: app.barEval, flipped: app.flipped, lively: true,
+                        pulse: v.swingClass.map { (v.swingEpoch, Theme.color(for: $0)) })
+                    .frame(height: side)
+                    .opacity(v.barDimmed ? 0.4 : 1)
+                    .animation(.easeOut(duration: 0.25), value: v.barDimmed)
+            } else {
+                EvalBar(eval: app.barEval, flipped: app.flipped)
+                    .frame(height: side)
+                    .opacity(app.lessonPreview == nil ? 1 : 0.35)   // a demonstrated line isn't evaluated
+                    .animation(.easeOut(duration: 0.2), value: app.lessonPreview == nil)
+            }
+            BoardView(side: side)
+        }
+        .frame(width: side + Self.barWidth + Self.gap, height: side)
+        .overlay(alignment: app.boardPosition.turn == .white
+                 ? (app.flipped ? .topTrailing : .bottomTrailing)
+                 : (app.flipped ? .bottomTrailing : .topTrailing)) {
+            TurnDot(turn: app.boardPosition.turn)
+                .offset(x: 16)
+        }
+        .animation(.easeInOut(duration: 0.25), value: app.boardPosition.turn)
+        .animation(.easeInOut(duration: 0.25), value: app.flipped)
     }
 }
 

@@ -129,6 +129,8 @@ final class VoiceNarrator: Narrator {
     private lazy var system = SystemNarrator()
     private lazy var kokoro = KokoroNarrator()
     private var active: (any Narrator)?
+    /// Playback speed multiplier (1 = normal). Applies to the system voice; Kokoro keeps its own pace.
+    var rate = 1.0
 
     var isSpeaking: Bool { active?.isSpeaking ?? false }
 
@@ -143,6 +145,7 @@ final class VoiceNarrator: Narrator {
         }
         active = system
         system.voiceID = settings.systemVoiceID
+        system.rate = rate
         await system.speak(text)
     }
 

@@ -10,6 +10,8 @@ final class SystemNarrator: NSObject, Narrator, AVSpeechSynthesizerDelegate {
 
     /// The AVSpeechSynthesisVoice identifier to use; nil (or a voice that is gone) means the current language's default.
     var voiceID: String?
+    /// Speed multiplier on the default speaking rate.
+    var rate = 1.0
 
     var isSpeaking: Bool { synth.isSpeaking }
 
@@ -23,7 +25,7 @@ final class SystemNarrator: NSObject, Narrator, AVSpeechSynthesizerDelegate {
         let u = AVSpeechUtterance(string: NarrationText.spoken(text))
         u.voice = voiceID.flatMap(AVSpeechSynthesisVoice.init(identifier:))
             ?? AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())
-        u.rate = AVSpeechUtteranceDefaultSpeechRate
+        u.rate = min(AVSpeechUtteranceMaximumSpeechRate, AVSpeechUtteranceDefaultSpeechRate * Float(rate))
         u.postUtteranceDelay = 0.1
         await withTaskCancellationHandler {
             await withCheckedContinuation { c in
