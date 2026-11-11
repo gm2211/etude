@@ -110,6 +110,7 @@ final class ReviewModel {
 
     let commentary = AICommentary()
     let lesson = AISummary()
+    let video = AIVideoScript()
 
     /// Side to move at the start of the reviewed line.
     private var rootTurn: Side = .white
@@ -121,6 +122,7 @@ final class ReviewModel {
         autoTask?.cancel(); autoTask = nil
         commentary.reset()
         lesson.reset()
+        video.reset()
         entries = [:]; path = []; running = false; done = 0; hasResults = false
         expandedMoments = []
     }
@@ -197,10 +199,12 @@ final class ReviewModel {
             if !hub.isReady { await hub.refresh(hub.selected) }
             guard let self, !Task.isCancelled else { return }
             // Not set up: the lesson card shows the hint; no work is started.
-            guard hub.isReady else { self.lesson.markNeedsSetup(); return }
+            guard hub.isReady else { self.lesson.markNeedsSetup(); self.video.markNeedsSetup(); return }
             let lessonTask = self.lesson.generate(game: game, review: self)
             // The on-device model runs one request at a time well; elsewhere the lesson and moments run side by side.
             if hub.selected == .apple { await lessonTask?.value }
+            let videoTask = self.video.generate(game: game, review: self)
+            if hub.selected == .apple { await videoTask?.value }
             guard !Task.isCancelled else { return }
             self.commentary.explainAll(self.autoMoments(), game: game, review: self)
         }
@@ -212,6 +216,7 @@ final class ReviewModel {
         guard hasResults, !running else { return }
         let neverStarted = lesson.state == .needsSignIn && commentary.states.isEmpty
         lesson.providerChanged(game: game, review: self)
+        video.providerChanged(game: game, review: self)
         if neverStarted {
             // The review finished with no provider ready, so the moments' notes were never started either.
             commentary.explainAll(autoMoments(), game: game, review: self)
