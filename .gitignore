@@ -2,7 +2,7 @@
 build/
 DerivedData/
 *.xcodeproj/xcuserdata/
-vendor/
+vendor
 .claude/
 mac/Tools/TrainBoardModel/dataset/
 .build/
