@@ -10,8 +10,8 @@ terraform {
 # Auth via GITHUB_TOKEN (bootstrap secret): GITHUB_TOKEN=$(gh auth token) terraform apply
 provider "github" {}
 
-resource "github_repository" "chess_lens" {
-  name        = "chess-lens"
+resource "github_repository" "etude" {
+  name        = "etude"
   description = "Native macOS chess analysis: read a board from a screenshot, analyze with Stockfish 18, AI review via your own ChatGPT plan (BYOS)."
   visibility  = "public"
   topics      = ["chess", "macos", "swiftui", "stockfish", "computer-vision", "chess-analysis"]
@@ -27,9 +27,14 @@ resource "github_repository" "chess_lens" {
 }
 
 output "repo_ssh_url" {
-  value = github_repository.chess_lens.ssh_clone_url
+  value = github_repository.etude.ssh_clone_url
 }
 
 output "repo_html_url" {
-  value = github_repository.chess_lens.html_url
+  value = github_repository.etude.html_url
+}
+
+moved {
+  from = github_repository.chess_lens
+  to   = github_repository.etude
 }
