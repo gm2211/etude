@@ -40,19 +40,19 @@ struct VideoCard: View {
                                startPoint: .topLeading, endPoint: .bottomTrailing)
                 if let id, app.game.nodes.indices.contains(id) {
                     MiniBoard(board: app.game.nodes[id].position.board, flipped: app.flipped)
-                        .frame(width: 136, height: 136)
+                        .frame(width: 154, height: 154)
                         .clipShape(RoundedRectangle(cornerRadius: 3))
                         .shadow(color: .black.opacity(0.4), radius: 8, y: 3)
                         .opacity(0.9)
                 }
                 Image(systemName: active ? "stop.fill" : "play.fill")
-                    .font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 54, height: 54)
-                    .background(Color.black.opacity(0.62), in: Circle())
+                    .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(Color.black.opacity(0.55), in: Circle())
                     .overlay(Circle().stroke(.white.opacity(0.75), lineWidth: 2))
                     .shadow(color: .black.opacity(0.4), radius: 6, y: 2)
             }
-            .frame(height: 170)
+            .frame(height: 176)
             .frame(maxWidth: .infinity)
             .overlay(alignment: .bottomTrailing) {
                 Text(VideoPlan.clock(plan.total)).font(.system(size: 11.5, weight: .bold).monospacedDigit()).foregroundStyle(.white)
@@ -60,7 +60,7 @@ struct VideoCard: View {
                     .background(.black.opacity(0.78), in: RoundedRectangle(cornerRadius: 3))
                     .padding(8)
             }
-            .overlay(alignment: .topLeading) {
+            .overlay(alignment: .bottomLeading) {
                 let asks = plan.script.segments.filter(\.ask).count
                 if asks > 0 {
                     Label("\(asks) to solve", systemImage: "questionmark.circle.fill")

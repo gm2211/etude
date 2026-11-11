@@ -81,6 +81,7 @@ enum SnapshotRunner {
             }
             // The summary's video card.
             do {
+                model.installForSnapshot(nil)
                 let card = VideoCard().padding(18).frame(width: 420).background(Theme.surface)
                     .environment(model).environment(\.colorScheme, scheme).environment(\.staticControls, true)
                 write(card, "summary-card-\(name)", dir, &written, width: 420)
@@ -115,6 +116,7 @@ enum SnapshotRunner {
             .environment(model)
             .environment(\.colorScheme, scheme)
             .environment(\.staticControls, true)
+            .environment(\.forceReturnFlash, returnFlash)
         }
     }
 
@@ -145,7 +147,7 @@ enum SnapshotRunner {
 
 extension AppModel {
     /// Snapshot renderer only: makes `video` the open video without starting it.
-    func installForSnapshot(_ v: GameVideo) { if video !== v { video = v } }
+    func installForSnapshot(_ v: GameVideo?) { if video !== v { video = v } }
 }
 
 // MARK: - Fixture

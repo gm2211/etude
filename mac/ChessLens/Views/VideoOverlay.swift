@@ -10,8 +10,8 @@ struct VideoOverlay: View {
     @Environment(AppModel.self) private var app
     let video: GameVideo
     let side: CGFloat
-    /// Draws the "Back to the game" flash (it normally appears for a moment when an excursion ends).
-    var forceReturnFlash = false
+    /// Draws the "Back to the game" flash (it normally appears for a moment when an excursion ends); snapshots only.
+    @Environment(\.forceReturnFlash) private var forceReturnFlash
     @State private var returning = false
 
     private var scale: CGFloat { side / 640 }
@@ -54,7 +54,7 @@ struct VideoOverlay: View {
     }
 
     @ViewBuilder private var badges: some View {
-        let fs = max(11, 15 * scale)
+        let fs = max(10.5, 13 * scale)
         VStack(alignment: .leading, spacing: 6) {
             if let title = video.excursionTitle {
                 HStack(spacing: fs * 0.45) {
@@ -67,7 +67,7 @@ struct VideoOverlay: View {
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, fs * 0.8).padding(.vertical, fs * 0.45)
-                .background(Color(red: 0.16, green: 0.22, blue: 0.52).opacity(0.94), in: Capsule())
+                .background(Color(red: 0.16, green: 0.22, blue: 0.52).opacity(0.9), in: Capsule())
                 .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 1))
                 .shadow(color: .black.opacity(0.3), radius: 5, y: 2)
                 .transition(.scale(scale: 0.8, anchor: .topLeading).combined(with: .opacity))
@@ -84,7 +84,7 @@ struct VideoOverlay: View {
                 .transition(.scale(scale: 0.8, anchor: .topLeading).combined(with: .opacity))
             }
         }
-        .padding(side * 0.03)
+        .padding(side * 0.02)
         .animation(.spring(response: 0.4, dampingFraction: 0.7), value: video.excursionTitle)
         .animation(.spring(response: 0.4, dampingFraction: 0.7), value: returning)
     }
@@ -158,19 +158,20 @@ struct VideoOverlay: View {
 
     /// What the subtitle says now, if anything.
     private var line: Line? {
+        if case .chapter = video.card { return nil }
         switch video.phase {
         case .asking:
             let q = video.quiz.map { BetterMove.prompt(side: $0.side) } ?? "Find a better move"
             let tail = video.countdown != nil ? "" : " Play it on the board."
-            return Line(kicker: "Pause and think", text: q + "." + tail, icon: nil, tint: Self.accentOnDark, ring: true)
+            return Line(kicker: "PAUSE AND THINK", text: q + "." + tail, icon: nil, tint: Self.accentOnDark, ring: true)
         case .judging(let m):
-            return Line(kicker: "Your move: \(san(m))", text: "Checking it\u{2026}", icon: "hourglass", tint: Self.accentOnDark)
+            return Line(kicker: "YOUR MOVE: \(san(m))", text: "Checking it\u{2026}", icon: "hourglass", tint: Self.accentOnDark)
         case .verdict(let v, let m, _):
-            return Line(kicker: "Your move: \(san(m))", text: BetterMove.text(v),
+            return Line(kicker: "YOUR MOVE: \(san(m))", text: BetterMove.text(v),
                         icon: v.isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill", tint: v.isCorrect ? Theme.good : Theme.mist)
         case .reveal:
             guard let s = video.subtitle else { return nil }
-            return Line(kicker: "The answer", text: s, icon: "lightbulb.fill", tint: Self.accentOnDark)
+            return Line(kicker: "THE ANSWER", text: s, icon: "lightbulb.fill", tint: Self.accentOnDark)
         case .playing:
             guard video.captions, let s = video.subtitle, !s.isEmpty else { return nil }
             return Line(kicker: nil, text: s, icon: nil, tint: .white)
@@ -192,7 +193,7 @@ struct VideoOverlay: View {
         .padding(.horizontal, side * 0.04)
         .padding(.vertical, side * 0.03)
         // The excursion badge sits at the top-left, so captions go below it.
-        .padding(.top, top && video.excursionTitle != nil ? 34 * scale : 0)
+        .padding(.top, top && video.excursionTitle != nil ? 30 * scale : 0)
         .frame(width: side, height: side)
         .animation(.easeOut(duration: 0.22), value: l)
         .animation(.easeInOut(duration: 0.3), value: top)
@@ -204,7 +205,7 @@ struct VideoOverlay: View {
             if l.ring, let c = video.countdown { CountdownRing(start: c.start, duration: c.duration, size: fs * 2.1, tint: l.tint) }
             VStack(spacing: 3) {
                 if let k = l.kicker {
-                    Text(k.uppercased()).font(.system(size: fs * 0.56, weight: .bold)).tracking(0.9).foregroundStyle(l.tint)
+                    Text(k).font(.system(size: fs * 0.56, weight: .bold)).tracking(0.9).foregroundStyle(l.tint)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     if let i = l.icon {
@@ -288,7 +289,7 @@ struct IntroCard: View {
     var body: some View {
         let s = side / 640
         ZStack {
-            Color.black.opacity(0.64)
+            Color.black.opacity(0.78)
             VStack(spacing: 14 * s) {
                 Text("GAME REVIEW").font(.system(size: max(10, 13 * s), weight: .bold)).tracking(2).foregroundStyle(CardStyle.kicker)
                 Text(facts.title).font(.display(max(24, 40 * s))).foregroundStyle(.white)
@@ -342,7 +343,7 @@ struct ChapterCard: View {
     var body: some View {
         let s = side / 640
         ZStack {
-            Color.black.opacity(0.52)
+            Color.black.opacity(0.68)
             VStack(spacing: 10 * s) {
                 Text("CHAPTER \(number)").font(.system(size: max(10, 13 * s), weight: .bold)).tracking(2).foregroundStyle(CardStyle.kicker)
                 Text(title).font(.display(max(26, 46 * s))).foregroundStyle(.white)
@@ -366,7 +367,7 @@ struct OutroCard: View {
     var body: some View {
         let s = side / 640
         ZStack {
-            Color.black.opacity(0.68)
+            Color.black.opacity(0.82)
             VStack(spacing: 16 * s) {
                 Text(facts.takeaways.isEmpty ? "THANKS FOR WATCHING" : "THE TAKEAWAYS")
                     .font(.system(size: max(10, 13 * s), weight: .bold)).tracking(2).foregroundStyle(CardStyle.kicker)
@@ -406,5 +407,14 @@ struct OutroCard: View {
         }
         .padding(.horizontal, 12 * s).padding(.vertical, 7 * s)
         .background(.white.opacity(0.13), in: Capsule())
+    }
+}
+
+private struct ForceReturnFlashKey: EnvironmentKey { static let defaultValue = false }
+
+extension EnvironmentValues {
+    var forceReturnFlash: Bool {
+        get { self[ForceReturnFlashKey.self] }
+        set { self[ForceReturnFlashKey.self] = newValue }
     }
 }

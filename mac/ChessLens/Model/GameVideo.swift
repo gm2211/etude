@@ -345,6 +345,11 @@ final class GameVideo {
         if let p {
             phase = p
             if case .verdict = p { replyUCI = quiz?.refutation.first }
+            if p == .reveal, let q = quiz {
+                let san = app?.game.nodes[q.parentID].position.move(fromUCI: q.best).flatMap { app?.game.nodes[q.parentID].position.san($0) } ?? q.best
+                subtitle = "The better move was \(san)."
+                previewMoves = [q.best]
+            }
         }
         if let left = countdownLeft { countdown = (Date().addingTimeInterval(left - VideoPlan.askHold), VideoPlan.askHold) }
     }
