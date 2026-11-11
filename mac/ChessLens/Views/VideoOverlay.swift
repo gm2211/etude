@@ -10,9 +10,6 @@ struct VideoOverlay: View {
     @Environment(AppModel.self) private var app
     let video: GameVideo
     let side: CGFloat
-    /// Draws the "Back to the game" flash (it normally appears for a moment when an excursion ends); snapshots only.
-    @Environment(\.forceReturnFlash) private var forceReturnFlash
-    @State private var returning = false
 
     private var scale: CGFloat { side / 640 }
 
@@ -22,21 +19,12 @@ struct VideoOverlay: View {
             tint
             glyph(g)
             reactionPop(g)
-            badges
             cards
-            subtitleLayer(g)
         }
         .frame(width: side, height: side, alignment: .topLeading)
         .allowsHitTesting(false)
         .animation(.easeInOut(duration: 0.5), value: video.excursionTitle)
         .animation(.easeOut(duration: 0.3), value: video.card)
-        .onChange(of: video.returnEpoch) { _, _ in
-            returning = true
-            Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(1300))
-                returning = false
-            }
-        }
     }
 
     // MARK: Excursion
@@ -51,42 +39,6 @@ struct VideoOverlay: View {
             }
             .transition(.opacity)
         }
-    }
-
-    @ViewBuilder private var badges: some View {
-        let fs = max(10.5, 13 * scale)
-        VStack(alignment: .leading, spacing: 6) {
-            if let title = video.excursionTitle {
-                HStack(spacing: fs * 0.45) {
-                    Image(systemName: "arrow.triangle.branch").font(.system(size: fs, weight: .bold))
-                    Text("WHAT IF").font(.system(size: fs * 0.82, weight: .heavy)).tracking(1.2)
-                    if !title.isEmpty {
-                        Text("\u{00B7}").opacity(0.6)
-                        Text(title).font(.system(size: fs, weight: .semibold)).lineLimit(1)
-                    }
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, fs * 0.8).padding(.vertical, fs * 0.45)
-                .background(Color(red: 0.16, green: 0.22, blue: 0.52).opacity(0.9), in: Capsule())
-                .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 1))
-                .shadow(color: .black.opacity(0.3), radius: 5, y: 2)
-                .transition(.scale(scale: 0.8, anchor: .topLeading).combined(with: .opacity))
-            } else if returning || forceReturnFlash {
-                HStack(spacing: fs * 0.45) {
-                    Image(systemName: "arrow.uturn.backward").font(.system(size: fs, weight: .bold))
-                    Text("Back to the game").font(.system(size: fs, weight: .bold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, fs * 0.8).padding(.vertical, fs * 0.45)
-                .background(Color(red: 0.12, green: 0.5, blue: 0.32).opacity(0.95), in: Capsule())
-                .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 1))
-                .shadow(color: .black.opacity(0.3), radius: 5, y: 2)
-                .transition(.scale(scale: 0.8, anchor: .topLeading).combined(with: .opacity))
-            }
-        }
-        .padding(side * 0.02)
-        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: video.excursionTitle)
-        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: returning)
     }
 
     // MARK: Glyph and reaction
@@ -136,103 +88,6 @@ struct VideoOverlay: View {
         }
         .frame(width: side, height: side, alignment: .topLeading)
         .animation(.spring(response: 0.38, dampingFraction: 0.5), value: video.reaction)
-    }
-
-    // MARK: Subtitles
-
-    struct Line: Hashable {
-        var kicker: String?
-        var text: String
-        var icon: String?
-        var tint: Color
-        var ring = false
-    }
-
-    /// The lesson colour, lifted to read on the dark subtitle plate.
-    static let accentOnDark = Color(red: 0.76, green: 0.68, blue: 1.0)
-
-    private func san(_ m: Move) -> String {
-        guard let q = video.quiz, app.game.nodes.indices.contains(q.parentID) else { return m.uci }
-        return app.game.nodes[q.parentID].position.san(m)
-    }
-
-    /// What the subtitle says now, if anything.
-    private var line: Line? {
-        if case .chapter = video.card { return nil }
-        switch video.phase {
-        case .asking:
-            let q = video.quiz.map { BetterMove.prompt(side: $0.side) } ?? "Find a better move"
-            let tail = video.countdown != nil ? "" : " Play it on the board."
-            return Line(kicker: "PAUSE AND THINK", text: q + "." + tail, icon: nil, tint: Self.accentOnDark, ring: true)
-        case .judging(let m):
-            return Line(kicker: "YOUR MOVE: \(san(m))", text: "Checking it\u{2026}", icon: "hourglass", tint: Self.accentOnDark)
-        case .verdict(let v, let m, _):
-            return Line(kicker: "YOUR MOVE: \(san(m))", text: BetterMove.text(v),
-                        icon: v.isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill", tint: v.isCorrect ? Theme.good : Theme.mist)
-        case .reveal:
-            guard let s = video.subtitle else { return nil }
-            return Line(kicker: "THE ANSWER", text: s, icon: "lightbulb.fill", tint: Self.accentOnDark)
-        case .playing:
-            guard video.captions, let s = video.subtitle, !s.isEmpty else { return nil }
-            return Line(kicker: nil, text: s, icon: nil, tint: .white)
-        }
-    }
-
-    private func subtitleLayer(_ g: BoardGeometry) -> some View {
-        let top = captionOnTop(g)
-        let l = line
-        return VStack(spacing: 0) {
-            if !top { Spacer(minLength: 0) }
-            if let l {
-                plate(l)
-                    .id(l)
-                    .transition(.opacity.combined(with: .offset(y: top ? -6 : 6)))
-            }
-            if top { Spacer(minLength: 0) }
-        }
-        .padding(.horizontal, side * 0.04)
-        .padding(.vertical, side * 0.03)
-        // The excursion badge sits at the top-left, so captions go below it.
-        .padding(.top, top && video.excursionTitle != nil ? 30 * scale : 0)
-        .frame(width: side, height: side)
-        .animation(.easeOut(duration: 0.22), value: l)
-        .animation(.easeInOut(duration: 0.3), value: top)
-    }
-
-    private func plate(_ l: Line) -> some View {
-        let fs = min(22, max(13, side * 0.031))
-        return HStack(alignment: .center, spacing: fs * 0.8) {
-            if l.ring, let c = video.countdown { CountdownRing(start: c.start, duration: c.duration, size: fs * 2.1, tint: l.tint) }
-            VStack(spacing: 3) {
-                if let k = l.kicker {
-                    Text(k).font(.system(size: fs * 0.56, weight: .bold)).tracking(0.9).foregroundStyle(l.tint)
-                }
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    if let i = l.icon {
-                        Image(systemName: i).font(.system(size: fs * 0.9, weight: .semibold)).foregroundStyle(l.tint)
-                    }
-                    Text(l.text).font(.system(size: fs, weight: .semibold)).foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .padding(.horizontal, fs * 0.8).padding(.vertical, fs * 0.5)
-        .background(.black.opacity(0.76), in: RoundedRectangle(cornerRadius: fs * 0.45))
-        .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
-        .frame(maxWidth: side * 0.92)
-    }
-
-    /// The subtitle goes on the edge of the board with less going on: it starts at the bottom, like a video's, and
-    /// moves to the top when the segment's moves, arrows and circles crowd the two ranks it would cover. Decided
-    /// per segment, so it doesn't jump around while one plays.
-    private func captionOnTop(_ g: BoardGeometry) -> Bool {
-        let squares = video.activity(ofSegment: video.cue.segment)
-        var extra: [Square] = []
-        if let q = video.quiz, video.phase != .playing { extra = Move(uci: q.best).map { [$0.from, $0.to] } ?? [] }
-        let rows = (squares + extra).map { Int((g.rect($0).midY / g.cell).rounded(.down)) }
-        return rows.filter { $0 >= 6 }.count > rows.filter { $0 <= 1 }.count
     }
 
     // MARK: Cards
@@ -410,11 +265,3 @@ struct OutroCard: View {
     }
 }
 
-private struct ForceReturnFlashKey: EnvironmentKey { static let defaultValue = false }
-
-extension EnvironmentValues {
-    var forceReturnFlash: Bool {
-        get { self[ForceReturnFlashKey.self] }
-        set { self[ForceReturnFlashKey.self] = newValue }
-    }
-}

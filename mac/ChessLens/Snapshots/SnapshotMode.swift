@@ -108,7 +108,10 @@ enum SnapshotRunner {
         var body: some View {
             VStack(spacing: 12) {
                 BoardStage(side: side)
-                if bar { VideoPlayerBar(video: video) }
+                if bar {
+                    VideoCaptionStrip(video: video).frame(maxWidth: 680)
+                    VideoPlayerBar(video: video)
+                }
             }
             .padding(.horizontal, 18).padding(.vertical, 16)
             .frame(width: 760)

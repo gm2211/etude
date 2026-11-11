@@ -57,6 +57,12 @@ final class GameVideo {
     static let narrateKey = "beats.narrate"
     static let captionsKey = "video.captions"
     static let speeds: [Double] = [1, 1.25, 1.5, 2]
+    /// Test hooks (the headless playback simulation): every wait is multiplied by `holdScale`, and `muted` keeps the
+    /// narrator silent without touching the saved preference.
+    static var holdScale = 1.0
+    static var muted = false
+    /// Called when a cue has played to its end.
+    @ObservationIgnored var onCueFinished: ((Int) -> Void)?
 
     let plan: VideoPlan
     let facts: Facts
@@ -454,7 +460,8 @@ final class GameVideo {
         isPlaying = true
         finished = false
         pausedOffset = 0
-        if start > 0 { settle(start - 1) } else { clearTransient(); index = 0; put(nodes[0]) }
+        if start > 0 { settle(start - 1) } else { clearTransient(); put(nodes[0]) }
+        index = start
         app?.refreshEngine()
         task = Task { [weak self] in
             guard let self else { return }
@@ -475,6 +482,7 @@ final class GameVideo {
     private func perform(_ i: Int) async {
         let c = cues[i]
         let began = ContinuousClock.now
+        defer { if !Task.isCancelled { onCueFinished?(i) } }
         index = i
         cueStart = Date()
         pausedOffset = 0
@@ -485,7 +493,7 @@ final class GameVideo {
         default:
             phase = .playing; quiz = nil; barDimmed = false; frozenNode = nil; excursionTitle = nil; previewMoves = []
         }
-        if narrate { narrator.prepare(cues[i...].lazy.map(\.say).filter { !$0.isEmpty }.prefix(3).map { $0 }) }
+        if narrate && !Self.muted { narrator.prepare(cues[i...].lazy.map(\.say).filter { !$0.isEmpty }.prefix(3).map { $0 }) }
 
         if let ch = c.chapterStart {
             card = .chapter(number: ch + 1, title: chapters[ch].title)
@@ -577,7 +585,7 @@ final class GameVideo {
         // A segment ends when its commentary does.
         if i + 1 >= cues.count || cues[i + 1].segment != c.segment { await settleSpeech() }
         guard !Task.isCancelled else { return }
-        let measured = (ContinuousClock.now - began).seconds * speed
+        let measured = (ContinuousClock.now - began).seconds * speed / Self.holdScale
         if measured > 0.2 { measure(i, measured) }
     }
 
@@ -604,7 +612,7 @@ final class GameVideo {
         if mode == .skip { phase = .playing; quiz = nil; barDimmed = false; return }
         if mode == .countdown {
             phase = .asking
-            let total = VideoPlan.askHold / speed
+            let total = VideoPlan.askHold / speed * Self.holdScale
             countdown = (Date(), total)
             await sleep(VideoPlan.askHold)
             guard !Task.isCancelled else { return }
@@ -681,7 +689,7 @@ final class GameVideo {
             self.marksEpoch += 1
             // A right answer: a moment to enjoy it, then the video goes on.
             guard v.isCorrect else { self.judgeTask = nil; return }
-            try? await Task.sleep(for: .seconds(VideoPlan.answerHold))
+            try? await Task.sleep(for: .seconds(VideoPlan.answerHold * Self.holdScale))
             guard !Task.isCancelled, self.phase == .verdict(v, tried: move, reply: replyText) else { return }
             self.judgeTask = nil
             self.resolveQuestion(reveal: false)
@@ -704,7 +712,7 @@ final class GameVideo {
     // MARK: Narration and timing
 
     private func sleep(_ seconds: Double) async {
-        try? await Task.sleep(for: .seconds(seconds / speed))
+        try? await Task.sleep(for: .seconds(seconds / speed * Self.holdScale))
     }
 
     private func beginSpeech(_ text: String) {
@@ -722,11 +730,11 @@ final class GameVideo {
     private func speak(_ text: String) async {
         guard !text.isEmpty else { return }
         let started = ContinuousClock.now
-        if narrate { await narrator.speak(text) }
+        if narrate && !Self.muted { await narrator.speak(text) }
         guard !Task.isCancelled else { return }
         let spoken = (ContinuousClock.now - started).seconds
-        if !narrate || spoken < 0.3 {
-            let left = VideoPlan.readingTime(text) / speed - spoken
+        if !narrate || Self.muted || spoken < 0.3 {
+            let left = VideoPlan.readingTime(text) / speed * Self.holdScale - spoken
             if left > 0 { try? await Task.sleep(for: .seconds(left)) }
         }
     }

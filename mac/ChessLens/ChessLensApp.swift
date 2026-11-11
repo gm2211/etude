@@ -13,6 +13,10 @@ enum EtudeMain {
             MainActor.assumeIsolated { SnapshotRunner.run(into: dir) }
             exit(0)
         }
+        if args.contains("--simulate-video") {
+            let ok = MainActor.assumeIsolated { SimulationRunner.run() }
+            exit(ok ? 0 : 1)
+        }
         ChessLensApp.main()
     }
 }

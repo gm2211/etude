@@ -193,13 +193,16 @@ struct BoardColumn: View {
     var body: some View {
         VStack(spacing: 12) {
             GeometryReader { geo in
-                let side = max(160, min(geo.size.height, geo.size.width - BoardStage.barWidth - BoardStage.gap))
+                let side = max(160, min(geo.size.height - (app.video == nil ? 0 : VideoChrome.bannerHeight + 6), geo.size.width - BoardStage.barWidth - BoardStage.gap))
                 BoardStage(side: side)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             if app.video == nil { NavigationRow() }
             if let session = app.playSession { PlayBanner(session: session) }
-            if let v = app.video, !app.hidesEvaluation { VideoPlayerBar(video: v) }
+            if let v = app.video, !app.hidesEvaluation {
+                VideoCaptionStrip(video: v).frame(maxWidth: 680)
+                VideoPlayerBar(video: v)
+            }
             else if let p = app.lessonPlayer, !app.hidesEvaluation { LessonPlayerBar(player: p) } else { LessonCaption() }
         }
         .padding(.horizontal, 18)
@@ -216,6 +219,18 @@ struct BoardStage: View {
     static let gap: CGFloat = 10
 
     var body: some View {
+        VStack(spacing: 6) {
+            if let v = app.video, !app.hidesEvaluation {
+                // Directly above the board, same width, always reserved while the video is open.
+                VideoBanner(video: v)
+                    .padding(.leading, Self.barWidth + Self.gap)
+            }
+            row
+        }
+        .frame(width: side + Self.barWidth + Self.gap)
+    }
+
+    private var row: some View {
         HStack(spacing: Self.gap) {
             if app.hidesEvaluation {
                 Color.clear.frame(width: Self.barWidth, height: side)
