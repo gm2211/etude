@@ -50,6 +50,8 @@ final class AppModel {
             guard oldValue !== walkthrough else { return }
             oldValue?.stop()
             if oldValue?.hidesEngine == true { refreshEngine() }
+            // The side panel the review put away for watching comes back when it ends.
+            if walkthrough == nil, inspectorHiddenForWatch { inspectorHiddenForWatch = false; showInspector = true }
         }
     }
     /// A summary example being illustrated on the board: its caption under the board and its arrows/squares on it.
@@ -62,6 +64,8 @@ final class AppModel {
 
     // MARK: UI state
     var showInspector = true
+    /// The guided review hid the side panel so the board fills the window, like a video; it comes back after.
+    @ObservationIgnored var inspectorHiddenForWatch = false
     var engineEnabled = true { didSet { if engineEnabled != oldValue { refreshEngine() } } }
     var showImport = false
     var showFileImporter = false

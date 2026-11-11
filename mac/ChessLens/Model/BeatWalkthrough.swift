@@ -43,6 +43,9 @@ final class BeatWalkthrough {
     }
 
     static let narrateKey = "beats.narrate"
+    static let captionsKey = "beats.captions"
+    /// The chapter's title card is up this long (while the board travels to the scene's start) before the scene plays.
+    static let titleHold = 1.8
     /// Scene moves slide slowly enough to follow, with a breath between them.
     static let moveAnimation = 0.8
     static let moveGap = 0.3
@@ -67,6 +70,16 @@ final class BeatWalkthrough {
     private(set) var marksShown = false
     /// Bumps each time marks change, so the board can animate its circles in.
     private(set) var epoch = 0
+    /// The chapter's title card is on the board (the start of each beat, like a video's chapter title).
+    private(set) var titleCard = false
+    /// Hands-free, the scene is holding on its question ("pause and think") before answering it.
+    private(set) var holdingQuestion = false
+    /// Subtitles on the board.
+    var captions = UserDefaults.standard.object(forKey: BeatWalkthrough.captionsKey) as? Bool ?? true {
+        didSet { UserDefaults.standard.set(captions, forKey: Self.captionsKey) }
+    }
+    /// Estimated running time of each beat's scene, in seconds (see `estimatedSeconds`): the chapter lengths.
+    let durations: [Double]
     var narrate = UserDefaults.standard.object(forKey: BeatWalkthrough.narrateKey) as? Bool ?? true {
         didSet {
             UserDefaults.standard.set(narrate, forKey: Self.narrateKey)
@@ -87,6 +100,23 @@ final class BeatWalkthrough {
     init(steps: [Step], app: AppModel) {
         self.steps = steps; self.app = app
         nodeID = steps.first?.rootID ?? 0
+        durations = steps.map { Self.estimatedSeconds($0) }
+    }
+
+    /// Estimated running time of the whole review.
+    var totalSeconds: Double { durations.reduce(0, +) }
+    /// Where the walkthrough is, in estimated seconds from the start (at scene-step granularity).
+    var elapsedSeconds: Double {
+        let before = durations.prefix(index).reduce(0, +)
+        if finished { return before + durations[index] }
+        if titleCard { return before }
+        return before + Self.titleHold + current.scene.prefix(sceneIndex).reduce(0) { $0 + Self.estimatedSeconds($1) }
+    }
+    /// How far into the current chapter, 0...1.
+    var chapterProgress: Double {
+        guard durations.indices.contains(index), durations[index] > 0 else { return 0 }
+        let start = durations.prefix(index).reduce(0, +)
+        return min(1, max(0, (elapsedSeconds - start) / durations[index]))
     }
 
     var current: Step { steps[index] }
@@ -182,6 +212,8 @@ final class BeatWalkthrough {
     func pause() {
         isPlaying = false
         isRunning = false
+        titleCard = false
+        holdingQuestion = false
         task?.cancel(); task = nil
         narrator.stop()
     }
@@ -206,17 +238,19 @@ final class BeatWalkthrough {
         judgeTask?.cancel(); judgeTask = nil
         narrator.stop()
         index = i
-        resume(at: 0)
+        resume(at: 0, intro: true)
         app?.refreshEngine()
     }
 
     /// Restores the board as the scene has it before step `i` (what came before isn't replayed), then plays on.
-    private func resume(at i: Int) {
+    private func resume(at i: Int, intro: Bool = false) {
         task?.cancel(); task = nil
         narrator.stop()
         replyUCI = nil
         phase = .scene
         finished = false
+        titleCard = intro
+        holdingQuestion = false
         var node = current.rootID, moves: [String] = []
         for s in current.scene.prefix(i) {
             if let r = s.rewind { node = r == .root ? current.rootID : current.nodeID; moves = [] }
@@ -226,7 +260,7 @@ final class BeatWalkthrough {
         marksShown = false
         sceneMoves = moves
         travel(to: node)
-        runScene(from: i)
+        runScene(from: i, intro: intro)
     }
 
     /// Leaves the question and plays the rest of the scene ("Show me", "Skip the question", a right answer).
@@ -285,12 +319,23 @@ final class BeatWalkthrough {
 
     /// Plays scene steps from `start`: rewind, speak the line while its moves slide in, show its marks, hold.
     /// By hand, a question on the question position stops the scene (see `Phase.asking`).
-    private func runScene(from start: Int) {
+    private func runScene(from start: Int, intro: Bool = false) {
         task?.cancel()
         let scene = current.scene, beat = index
         isRunning = true
         task = Task { [weak self] in
             guard let self else { return }
+            if intro {
+                // The chapter title holds while the board fast-forwards to the scene's start.
+                if self.narrate, let first = scene.first { self.narrator.prepare([first.say]) }
+                let shown = ContinuousClock.now
+                await self.travelTask?.value
+                let left = Duration.seconds(Self.titleHold) - (ContinuousClock.now - shown)
+                if left > .zero { try? await Task.sleep(for: left) }
+                guard !Task.isCancelled, self.index == beat else { return }
+                self.titleCard = false
+                try? await Task.sleep(for: .seconds(0.25))
+            }
             await self.travelTask?.value
             for i in min(start, scene.count)..<scene.count {
                 guard !Task.isCancelled, self.index == beat else { return }
@@ -315,7 +360,9 @@ final class BeatWalkthrough {
                         self.app?.refreshEngine()
                         return
                     }
+                    self.holdingQuestion = true
                     try? await Task.sleep(for: .seconds(Self.askHold))
+                    self.holdingQuestion = false
                 }
                 try? await Task.sleep(for: .seconds(s.pause ?? Self.stepGap))
             }
@@ -365,6 +412,25 @@ final class BeatWalkthrough {
             let left = Duration.seconds(Self.readingTime(text)) - spoken
             if left > .zero { try? await Task.sleep(for: left) }
         }
+    }
+
+    /// Estimated seconds a scene step takes to play: its rewind, the longer of its line and its moves, the
+    /// hands-free hold on a question and the gap after it. Used for chapter lengths and timestamps.
+    static func estimatedSeconds(_ s: GameLesson.SceneStep) -> Double {
+        let moves = s.moves.isEmpty ? 0 : 0.35 + Double(s.moves.count) * (moveAnimation + moveGap)
+        let line = s.say.isEmpty ? 0 : readingTime(s.say)
+        return (s.rewind == nil ? 0 : moveAnimation) + max(line, moves) + (s.ask ? askHold : 0) + (s.pause ?? stepGap)
+    }
+
+    /// Estimated seconds for a beat: its title card, its scene and the breath before the next beat.
+    static func estimatedSeconds(_ step: Step) -> Double {
+        titleHold + 0.25 + step.scene.reduce(0) { $0 + estimatedSeconds($1) } + 0.8
+    }
+
+    /// "1:05" for 65 seconds, as a video player shows times.
+    nonisolated static func clock(_ seconds: Double) -> String {
+        let t = max(0, Int(seconds.rounded()))
+        return "\(t / 60):" + (t % 60 < 10 ? "0" : "") + "\(t % 60)"
     }
 
     /// Seconds to read a scene line silently: short lines go by quickly, at least 1.6 s.

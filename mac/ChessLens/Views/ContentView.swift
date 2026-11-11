@@ -205,6 +205,9 @@ struct BoardColumn: View {
                             .animation(.easeOut(duration: 0.2), value: app.lessonPreview == nil)
                     }
                     BoardView(side: side)
+                        .overlay {
+                            if let w = app.walkthrough, !app.hidesEvaluation { WatchOverlay(walkthrough: w, side: side) }
+                        }
                 }
                 .frame(width: side + barW + gap, height: side)
                 .overlay(alignment: app.boardPosition.turn == .white

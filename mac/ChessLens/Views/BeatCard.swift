@@ -15,10 +15,10 @@ extension GameLesson.Beat.Kind {
     }
 }
 
-/// The guided review under the board, in the caption's place: "Beat 2 of 5 \u{00B7} The slip", the beat's headline,
-/// then the scene's current line as a subtitle with its progress, the find-the-better-move question when the scene
-/// stops to ask, the rule once the scene is over, and the transport (previous, play, next, replay, voice, close).
-/// See `BeatWalkthrough`.
+/// The guided review's player under the board, like a video's controls: the chapter (number, title, move, glyph),
+/// a chapter timeline whose segments are as long as each chapter plays (click one to jump there), the transport
+/// with the running time, and the buttons a question needs. The scene itself (title cards, subtitles, glyphs) is
+/// drawn over the board by `WatchOverlay`. See `BeatWalkthrough`.
 struct BeatCard: View {
     @Environment(AppModel.self) private var app
     let walkthrough: BeatWalkthrough
@@ -26,101 +26,62 @@ struct BeatCard: View {
     var body: some View {
         let w = walkthrough
         let step = w.current
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 7) {
                 Circle().fill(step.beat.kind.color).frame(width: 8, height: 8)
-                Text("Beat \(w.index + 1) of \(w.steps.count)").font(.system(size: 11, weight: .semibold).monospacedDigit())
-                    .foregroundStyle(Theme.ink3)
-                Text("\u{00B7}").foregroundStyle(Theme.ink3)
-                Text(step.beat.title).font(.system(size: 11, weight: .semibold)).tracking(0.3).foregroundStyle(Theme.lesson)
-                    .lineLimit(1)
-                Text(beatMove(step)).font(.mono(11, weight: .semibold)).foregroundStyle(Theme.ink3)
+                Text("\(w.index + 1)/\(w.steps.count)").font(.mono(11.5, weight: .semibold)).foregroundStyle(Theme.ink3)
+                Text(step.beat.title).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(Theme.ink).lineLimit(1)
+                Text(beatMoveLabel(app.game, step)).font(.mono(12, weight: .semibold)).foregroundStyle(Theme.ink2)
+                if let cls = app.review.entries[step.nodeID]?.cls { ClassBadge(cls: cls, size: 15) }
                 Spacer(minLength: 6)
                 closeButton
             }
 
-            Text(step.beat.headline)
-                .font(.system(size: 12.5, weight: .medium)).foregroundStyle(Theme.ink3)
-                .lineLimit(2).fixedSize(horizontal: false, vertical: true)
-
-            subtitle(w)
-                .id("\(w.index)-\(w.sceneIndex)-\(phaseKey(w.phase))")
-                .transition(.opacity.combined(with: .offset(y: 3)))
-
-            sceneProgress(w)
-
-            controls(w, step)
+            ChapterTimeline(walkthrough: w) { i in
+                let s = w.steps[i]
+                return "\(BeatWalkthrough.clock(w.durations.prefix(i).reduce(0, +)))  \(s.beat.title) \u{00B7} \(beatMoveLabel(app.game, s))"
+            }
 
             HStack(spacing: 4) {
-                transport("backward.fill", "Previous beat (\u{2190})", enabled: w.canGoBack) { w.previous() }
+                transport("backward.end.fill", "Previous chapter (\u{2190})", enabled: w.canGoBack) { w.previous() }
                 transport(w.isPlaying || w.isRunning ? "pause.fill" : "play.fill",
-                          w.isPlaying || w.isRunning ? "Pause (Space)" : "Play every beat hands-free (Space)",
+                          w.isPlaying || w.isRunning ? "Pause (Space)" : "Play every chapter hands-free (Space)",
                           enabled: true, prominent: true) { w.togglePlay() }
-                transport("forward.fill", "Next beat (\u{2192})", enabled: w.canGoForward) { w.next() }
-                dots(w).padding(.leading, 8)
-                Spacer(minLength: 6)
-                transport("arrow.counterclockwise", "Replay this scene", enabled: !step.scene.isEmpty) { w.replayScene() }
+                transport("forward.end.fill", "Next chapter (\u{2192})", enabled: w.canGoForward) { w.next() }
+                Text("\(BeatWalkthrough.clock(w.elapsedSeconds)) / \(BeatWalkthrough.clock(w.totalSeconds))")
+                    .font(.mono(11.5)).foregroundStyle(Theme.ink3)
+                    .padding(.leading, 6)
+                    .help("Running time, estimated from the length of the narration")
+                Spacer(minLength: 8)
+                actions(w)
+                Spacer(minLength: 8)
+                transport("arrow.counterclockwise", "Replay this chapter", enabled: !step.scene.isEmpty) { w.replayScene() }
+                transport(w.captions ? "captions.bubble.fill" : "captions.bubble", w.captions ? "Hide subtitles" : "Show subtitles",
+                          enabled: true) { w.captions.toggle() }
                 transport(w.narrate ? "speaker.wave.2.fill" : "speaker.slash", w.narrate ? "Mute the narrator" : "Read the scene aloud",
                           enabled: true) { w.narrate.toggle() }
             }
         }
-        .padding(.leading, 14).padding(.trailing, 8).padding(.top, 8).padding(.bottom, 6)
+        .padding(.leading, 14).padding(.trailing, 8).padding(.top, 9).padding(.bottom, 6)
         .frame(maxWidth: 520 + 36, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 4))
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.lesson.opacity(0.45), lineWidth: 1))
-        .overlay(alignment: .leading) { Rectangle().fill(step.beat.kind.color).frame(width: 3).clipShape(RoundedRectangle(cornerRadius: 1.5)) }
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.lesson.opacity(0.45), lineWidth: 1))
         .animation(.easeOut(duration: 0.2), value: w.index)
-        .animation(.easeOut(duration: 0.2), value: w.sceneIndex)
         .animation(.easeOut(duration: 0.2), value: phaseKey(w.phase))
         .animation(.easeOut(duration: 0.2), value: w.finished)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Guided review, beat \(w.index + 1) of \(w.steps.count): \(step.beat.title)")
+        .accessibilityLabel("Guided review, chapter \(w.index + 1) of \(w.steps.count): \(step.beat.title)")
     }
 
-    // MARK: Content
-
-    /// The line being spoken, like a video's subtitle; the verdict on a try in its place.
-    @ViewBuilder private func subtitle(_ w: BeatWalkthrough) -> some View {
-        switch w.phase {
-        case .verdict(let v, _, _):
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: v.isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(v.isCorrect ? Theme.good : Theme.mist)
-                Text(BetterMove.text(v)).font(.system(size: 15.5, weight: .semibold)).foregroundStyle(Theme.ink)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        default:
-            Text(w.sceneStep?.say ?? "")
-                .font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.ink)
-                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    /// One thin segment per scene step: done, current, to come.
-    private func sceneProgress(_ w: BeatWalkthrough) -> some View {
-        HStack(spacing: 3) {
-            ForEach(w.current.scene.indices, id: \.self) { i in
-                Capsule()
-                    .fill(i < w.sceneIndex || (i == w.sceneIndex && w.finished) ? Theme.lesson.opacity(0.55)
-                          : i == w.sceneIndex ? Theme.lesson : Theme.line2)
-                    .frame(height: 2.5)
-            }
-        }
-        .frame(maxWidth: 220)
-        .accessibilityLabel("Scene step \(w.sceneIndex + 1) of \(w.current.scene.count)")
-    }
-
-    @ViewBuilder private func controls(_ w: BeatWalkthrough, _ step: BeatWalkthrough.Step) -> some View {
+    /// What the scene needs from the player now: the question's buttons, or "Next chapter" once a scene is over.
+    @ViewBuilder private func actions(_ w: BeatWalkthrough) -> some View {
         switch w.phase {
         case .asking:
-            question(step)
-            HStack(spacing: 6) {
-                pill("Skip the question", "forward", prominent: false) { w.continueScene() }
-            }
+            pill("Skip the question", "forward", prominent: false) { w.continueScene() }
         case .judging:
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text("Checking your move\u{2026}").font(.system(size: 13)).foregroundStyle(Theme.ink3)
+                Text("Checking\u{2026}").font(.system(size: 12.5)).foregroundStyle(Theme.ink3)
             }
         case .verdict(let v, _, _):
             HStack(spacing: 6) {
@@ -132,30 +93,10 @@ struct BeatCard: View {
                 }
             }
         case .scene:
-            if w.finished, let r = step.beat.rule { rule(r) }
+            if w.finished, !w.isPlaying, w.canGoForward {
+                pill("Next: \(w.steps[w.index + 1].beat.title)", "forward.fill", prominent: true) { w.next() }
+            }
         }
-    }
-
-    private func question(_ step: BeatWalkthrough.Step) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "questionmark.circle.fill").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.lesson)
-            Text(step.quiz.map { BetterMove.prompt(side: $0.side) } ?? "")
-                .font(.system(size: 13.5, weight: .semibold)).foregroundStyle(Theme.lesson)
-            Text("Play it on the board").font(.system(size: 12)).foregroundStyle(Theme.ink3)
-        }
-    }
-
-    private func rule(_ r: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "checkmark.seal.fill").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(Theme.good)
-            Text(r).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.ink).fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 8).padding(.vertical, 5)
-        .background(Theme.good.opacity(0.10), in: RoundedRectangle(cornerRadius: 4))
-    }
-
-    private func beatMove(_ step: BeatWalkthrough.Step) -> String {
-        step.beat.ply == 0 || step.beat.at.lowercased() == "start" ? "Start" : moveLabel(app.game, step.nodeID)
     }
 
     private func phaseKey(_ p: BeatWalkthrough.Phase) -> String {
@@ -168,20 +109,6 @@ struct BeatCard: View {
     }
 
     // MARK: Controls
-
-    private func dots(_ w: BeatWalkthrough) -> some View {
-        HStack(spacing: 5) {
-            ForEach(w.steps.indices, id: \.self) { i in
-                Button { w.go(to: i) } label: {
-                    Capsule().fill(i == w.index ? w.steps[i].beat.kind.color : i < w.index ? Theme.lesson.opacity(0.45) : Theme.line2)
-                        .frame(width: i == w.index ? 16 : 7, height: 7)
-                        .contentShape(Rectangle().inset(by: -4))
-                }
-                .buttonStyle(.plain)
-                .help("Beat \(i + 1): \(w.steps[i].beat.title)")
-            }
-        }
-    }
 
     private func pill(_ title: String, _ symbol: String, prominent: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -222,5 +149,53 @@ struct BeatCard: View {
         .opacity(enabled ? 1 : 0.35)
         .help(help)
         .accessibilityLabel(help)
+    }
+}
+
+/// The chapters as a video timeline: one segment per beat, as wide as its share of the running time, filled up
+/// to where the walkthrough is. The current chapter is thicker with a playhead; a dot in each segment's kind
+/// colour marks where it starts. Click a segment to jump to that chapter.
+struct ChapterTimeline: View {
+    let walkthrough: BeatWalkthrough
+    let label: (Int) -> String
+
+    var body: some View {
+        let w = walkthrough
+        let total = max(1, w.totalSeconds)
+        GeometryReader { geo in
+            let gap: CGFloat = 3
+            let avail = max(0, geo.size.width - gap * CGFloat(max(0, w.steps.count - 1)))
+            HStack(spacing: gap) {
+                ForEach(w.steps.indices, id: \.self) { i in
+                    let width = avail * CGFloat(w.durations[i] / total)
+                    let fill: Double = i < w.index ? 1 : i == w.index ? w.chapterProgress : 0
+                    let current = i == w.index
+                    Button { w.go(to: i) } label: {
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Theme.line2)
+                            Capsule().fill(Theme.lesson.opacity(current ? 1 : 0.7)).frame(width: width * CGFloat(fill))
+                            Circle().fill(w.steps[i].beat.kind.color).frame(width: 5, height: 5).padding(.leading, 2)
+                                .opacity(current ? 0 : 1)
+                        }
+                        .frame(width: width, height: current ? 7 : 5)
+                        .overlay(alignment: .leading) {
+                            if current {
+                                Circle().fill(Theme.lesson).frame(width: 12, height: 12)
+                                    .overlay(Circle().stroke(Theme.surface, lineWidth: 2))
+                                    .offset(x: max(0, width * CGFloat(fill) - 6))
+                            }
+                        }
+                        .frame(height: 16)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(label(i))
+                    .accessibilityLabel("Chapter \(i + 1): \(w.steps[i].beat.title)")
+                }
+            }
+        }
+        .frame(height: 16)
+        .animation(.easeInOut(duration: 0.45), value: w.elapsedSeconds)
+        .animation(.easeOut(duration: 0.2), value: w.index)
     }
 }

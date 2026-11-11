@@ -80,6 +80,8 @@ extension AppModel {
         lessonPlayer = nil
         let w = BeatWalkthrough(steps: steps, app: self)
         walkthrough = w
+        // Watching takes the whole window: the side panel slides away and returns when the review ends.
+        if showInspector { showInspector = false; inspectorHiddenForWatch = true }
         w.start(at: index)
     }
 
