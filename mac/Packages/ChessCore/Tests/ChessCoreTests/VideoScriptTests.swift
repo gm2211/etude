@@ -136,3 +136,74 @@ final class VideoScriptTests: XCTestCase {
         XCTAssertTrue(ScriptPrompt.user(f, compact: false).contains("Questions may only be asked at: 3\u{2026}Nf6"))
     }
 }
+
+final class VideoCuesTests: XCTestCase {
+    typealias S = VideoScript
+
+    private func script(_ segs: [S.Segment]) -> S {
+        S(style: .calm, title: "T", intro: "Hello.", segments: segs, outro: "Bye.", takeaways: [])
+    }
+
+    func testIntroOutroAndQuickSegment() {
+        let v = script([S.Segment(from: 1, to: 3, say: "Quick.", pace: .quick, chapter: "The opening")])
+        let c = VideoCues.compile(v)
+        XCTAssertEqual(c.cues.map(\.kind), [.intro, .move(ply: 1), .move(ply: 2), .move(ply: 3), .outro])
+        XCTAssertEqual(c.cues[1].say, "Quick.")                      // said from the first move
+        XCTAssertEqual(c.cues[2].say, "")
+        XCTAssertEqual(c.cues[0].say, "Hello.")
+        XCTAssertEqual(c.cues[4].say, "Bye.")
+        XCTAssertEqual(c.chapters.map(\.title), ["The opening"])
+        XCTAssertEqual(c.chapters[0].cue, 1)
+        XCTAssertEqual(c.chapters[0].seekCue, 0)
+        XCTAssertEqual(c.cues[1].chapterStart, 0)
+    }
+
+    func testNormalSaysAfterMovesWithMarks() {
+        let arrow = GameLesson.Example.Arrow(from: Sq.parse("e2")!, to: Sq.parse("e4")!)
+        let v = script([S.Segment(from: 4, to: 5, say: "Said late.", pace: .normal, reaction: "Oof.", arrows: [arrow])])
+        let c = VideoCues.compile(v)
+        XCTAssertEqual(c.cues.map(\.kind), [.intro, .move(ply: 4), .move(ply: 5), .marks, .outro])
+        XCTAssertEqual(c.cues[1].say, "")
+        XCTAssertEqual(c.cues[3].say, "Said late.")
+        XCTAssertEqual(c.cues[3].reaction, "Oof.")
+        XCTAssertEqual(c.cues[3].arrows, [arrow])
+        XCTAssertEqual(c.chapters.map(\.title), ["The opening"])      // the first segment always starts a chapter
+    }
+
+    func testAskOrder() {
+        let v = script([S.Segment(from: 10, to: 12, say: "Blunder.", pace: .slow, ask: true)])
+        let c = VideoCues.compile(v)
+        XCTAssertEqual(c.cues.map(\.kind), [.intro, .move(ply: 10), .move(ply: 11), .ask, .move(ply: 12), .marks, .outro])
+        XCTAssertEqual(c.cues[3].ply, 12)                              // the question is about move 12
+        XCTAssertEqual(c.cues[5].say, "Blunder.")
+    }
+
+    func testAskOnSinglePlySegmentHasNoMovesBeforeQuestion() {
+        let v = script([S.Segment(from: 7, to: 7, say: "x", pace: .normal, ask: true)])
+        XCTAssertEqual(VideoCues.compile(v).cues.map(\.kind), [.intro, .ask, .move(ply: 7), .marks, .outro])
+    }
+
+    func testWhatIfOrderAndChapters() {
+        let exc = S.Excursion(root: .before, title: "Instead", steps: [
+            S.Step(say: "One.", moves: ["e2e4"]), S.Step(say: "Two.", moves: ["e7e5", "g1f3"])])
+        let v = script([
+            S.Segment(from: 1, to: 2, say: "Open.", pace: .quick, chapter: "The opening"),
+            S.Segment(from: 3, to: 4, say: "But wait.", pace: .slow, chapter: "The blunder", whatIf: exc),
+            S.Segment(from: 5, to: 6, say: "End.", pace: .quick)])
+        let c = VideoCues.compile(v)
+        XCTAssertEqual(c.cues.map(\.kind), [
+            .intro, .move(ply: 1), .move(ply: 2),
+            .move(ply: 3), .move(ply: 4), .marks,
+            .excursionEnter(root: .before), .excursionStep(index: 0), .excursionStep(index: 1), .excursionExit,
+            .move(ply: 5), .move(ply: 6), .outro])
+        XCTAssertEqual(c.cues[6].title, "Instead")
+        XCTAssertEqual(c.cues[8].moves, ["e7e5", "g1f3"])
+        XCTAssertEqual(c.chapters.map(\.title), ["The opening", "The blunder"])
+        XCTAssertEqual(c.chapters.map(\.cue), [1, 3])
+        XCTAssertEqual(c.chapters.map(\.seekCue), [0, 3])
+        XCTAssertEqual(c.chapter(at: 0), 0)
+        XCTAssertEqual(c.chapter(at: 2), 0)
+        XCTAssertEqual(c.chapter(at: 5), 1)
+        XCTAssertEqual(c.chapter(at: 12), 1)
+    }
+}
